@@ -1,0 +1,22 @@
+# app_identifier("[[APP_IDENTIFIER]]") # The bundle identifier of your app
+# apple_id("[[ttom@zcsmart.com]]") # Your Apple email address
+
+
+# For more information about the Appfile, see:
+#     https://docs.fastlane.tools/advanced/#appfile
+
+
+apple_id ENV['APPLE_ID']
+
+for_platform :ios do
+  for_lane :community do
+    app_identifier "com.zcsmart.property"
+    team_id "Z5RV6K5BSY"
+    itc_team_id "127004962"
+  end
+  for_lane :aiwushe do
+    app_identifier 'com.zcsmart.aws.property'
+  	team_id "MBB6RBH9JT"
+  	itc_team_id "117185814"
+  end
+end

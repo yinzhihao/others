@@ -1,0 +1,423 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+
+# 增加一个超时时长
+ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "120"
+
+default_platform(:ios)
+
+platform :ios do
+  # desc "Description of what the lane does"
+  # lane :custom_lane do
+  #   # add actions here: https://docs.fastlane.tools/actions
+  # end
+  lane :beta do
+    # match(type: "appstore")
+    gym(scheme: "community")
+    # testflight
+    # slack(message: "成功上传测试版到testflight")
+  end
+
+  before_all do |lane, options|
+    # cocoapods
+  end
+
+  after_all do |lane, options|
+     # slack(message: "fastlane was successful", success: true)
+  end
+
+  def install_pods
+    cocoapods()
+      # cocoapods(
+        # clean_install: true,
+        # podfile: "./Podfile",
+        # try_repo_update_on_error: true
+      # )
+  end
+
+
+  # ------------------------------ 爱吾舍  ------------------------------ #
+
+  lane :aiwushe do
+    install_pods()
+    
+    scheme_name = ENV['SCHEME_NAME']
+
+    project_name = ENV['PROJECT_NAME']
+
+    project = "./" + project_name + "/" + project_name + ".xcodeproj"
+    workspace = "./" + project_name + ".xcworkspace"
+
+    method_name = ENV['METHOD']
+
+    team_id = ENV['TEAM_ID']
+
+    # get_provisioning_profile(
+    #   adhoc: true,
+    #   force: false,
+    #   app_identifier: "com.zcsmart.property",
+    #   filename: "AdHoc_com.zcsmart.property.mobileprovision"
+    # )
+    # sigh(adhoc: true)#申请adhoc证书
+
+    # build加1
+    increment_build_number_in_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    # 获取应用版本号
+    versoin_number = get_version_number_from_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    # 获取build版本号
+    build_number = get_build_number_from_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    now_date = Time.now.strftime('%Y%m%d')
+    now_time = Time.now.strftime('%Y%m%d_%H%M%S')
+
+    #导出路径  我们可以桌面创建IPA_Info(没有的话会自动创建) 文件夹来集中管理生成的ipa等文件
+    output_directory = File.expand_path("./IPA/#{now_date}")
+
+    #导出名称 
+    output_name = "#{scheme_name}_#{versoin_number}.#{build_number}_#{now_time}.ipa"
+
+    #gym用于编译ipa 参数可参考https://docs.fastlane.tools/actions/gym/#gym
+    gym(
+      workspace: workspace,
+      scheme: scheme_name,
+      export_method: "ad-hoc", #app-store、ad-hoc、development、enterprise
+      # export_xcargs: "-allowProvisioningUpdates", #Xcode 9 默认不允许访问钥匙串的内容,必须要设置此项才可以
+      output_directory: output_directory,
+      output_name: output_name,
+      configuration: "Release", # Debug, Release
+      clean: true, # 在构建前先clean
+      suppress_xcode_output: true, # 打包过程中不显示xcode的输出信息
+      export_options: {
+        compileBitcode: false,
+        destination: 'export',
+        method: "ad-hoc", #默认,可以不指定
+        signingStyle: "automatic",
+        stripSwiftSymbols: true,
+        teamID: team_id,
+        thinning: "<none>"
+      }
+    )
+
+    # 上传到firim
+    firim(
+      firim_api_token: ENV['FIRIM_API_TOKEN'],
+      app_changelog: ENV['FIRIM_CHANGELOG'],
+      download_page_prefix: 'https://fir.xcxwo.com',
+      app_is_opened: true,
+    )
+
+    #gym用于编译ipa 参数可参考https://docs.fastlane.tools/actions/gym/#gym
+    gym(
+      workspace: workspace,
+      scheme: scheme_name,
+      export_method: method_name, #app-store、ad-hoc、development、enterprise
+      # export_xcargs: "-allowProvisioningUpdates", #Xcode 9 默认不允许访问钥匙串的内容,必须要设置此项才可以
+      output_directory: output_directory,
+      output_name: output_name,
+      configuration: "Release", # Debug, Release
+      clean: true, # 在构建前先clean
+      suppress_xcode_output: true, # 打包过程中不显示xcode的输出信息
+      export_options: {
+        compileBitcode: false,
+        destination: 'export',
+        method: method_name, #默认,可以不指定
+        signingStyle: "automatic",
+        stripSwiftSymbols: true,
+        teamID: team_id,
+        thinning: "<none>"
+      }
+    )
+
+    # 上传AppStore
+    deliver(
+      submit_for_review: true, # 提交审核
+      automatic_release: true,
+      # 选择跳过图片和元数据上传，自己去配置
+      # skip_screenshots:true,
+      # skip_metadata:true,
+      # skip_binary_upload: true,
+      # 上传所有信息到App Store
+      force:true,
+      metadata_path: ENV['METADATA_PATH'],
+      screenshots_path: ENV['SCREENSHOTS_PATH'],
+      # release_notes: "update somethings",
+    )
+
+    # 上传到蒲公英
+    # pgyer(
+    #   api_key: "433fa791a2cae1563d20f29b0ff2f4e1", 
+    #   # password: "123456",  # 设置密码
+    #   # install_type: "2" # 设置密码
+    #   update_description: "生产"
+    # )
+
+    git_add
+    git_commit(path: ".", message: "fastlane update version")
+    push_to_git_remote
+    
+  end
+
+  # ------------------------------ 中铁  ------------------------------ #
+
+  lane :community do
+    install_pods()
+
+    scheme_name = ENV['SCHEME_NAME']
+
+    project_name = ENV['PROJECT_NAME']
+
+    project = "./" + project_name + "/" + project_name + ".xcodeproj"
+    workspace = "./" + project_name + ".xcworkspace"
+
+    method_name = ENV['METHOD']
+
+    team_id = ENV['TEAM_ID']
+
+    # get_provisioning_profile(
+    #   adhoc: true,
+    #   force: false,
+    #   app_identifier: "com.zcsmart.property",
+    #   filename: "AdHoc_com.zcsmart.property.mobileprovision"
+    # )
+    # sigh(adhoc: true)#申请adhoc证书
+
+    # build加1
+    increment_build_number_in_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    # 获取应用版本号
+    versoin_number = get_version_number_from_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    # 获取build版本号
+    build_number = get_build_number_from_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    now_date = Time.now.strftime('%Y%m%d')
+    now_time = Time.now.strftime('%Y%m%d_%H%M%S')
+
+    #导出路径  我们可以桌面创建IPA_Info(没有的话会自动创建) 文件夹来集中管理生成的ipa等文件
+    output_directory = File.expand_path("./IPA/#{now_date}")
+
+    #导出名称 
+    output_name = "#{scheme_name}_#{versoin_number}.#{build_number}_#{now_time}.ipa"
+
+    #gym用于编译ipa 参数可参考https://docs.fastlane.tools/actions/gym/#gym
+    gym(
+      workspace: workspace,
+      scheme: scheme_name,
+      export_method: "ad-hoc", #app-store、ad-hoc、development、enterprise
+      # export_xcargs: "-allowProvisioningUpdates", #Xcode 9 默认不允许访问钥匙串的内容,必须要设置此项才可以
+      output_directory: output_directory,
+      output_name: output_name,
+      configuration: "Release", # Debug, Release
+      clean: true, # 在构建前先clean
+      suppress_xcode_output: true, # 打包过程中不显示xcode的输出信息
+      export_options: {
+        compileBitcode: false,
+        destination: 'export',
+        method: "ad-hoc", #默认,可以不指定
+        signingStyle: "automatic",
+        stripSwiftSymbols: true,
+        teamID: team_id,
+        thinning: "<none>"
+      }
+    )
+
+    # 上传到firim
+    firim(
+      firim_api_token: ENV['FIRIM_API_TOKEN'],
+      app_changelog: ENV['FIRIM_CHANGELOG'],
+      download_page_prefix: 'https://fir.xcxwo.com',
+      app_is_opened: true,
+    )
+
+    #gym用于编译ipa 参数可参考https://docs.fastlane.tools/actions/gym/#gym
+    gym(
+      workspace: workspace,
+      scheme: scheme_name,
+      export_method: method_name, #app-store、ad-hoc、development、enterprise
+      # export_xcargs: "-allowProvisioningUpdates", #Xcode 9 默认不允许访问钥匙串的内容,必须要设置此项才可以
+      output_directory: output_directory,
+      output_name: output_name,
+      configuration: "Release", # Debug, Release
+      clean: true, # 在构建前先clean
+      suppress_xcode_output: true, # 打包过程中不显示xcode的输出信息
+      export_options: {
+        compileBitcode: false,
+        destination: 'export',
+        method: method_name, #默认,可以不指定
+        signingStyle: "automatic",
+        stripSwiftSymbols: true,
+        teamID: team_id,
+        thinning: "<none>"
+      }
+    )
+
+    # 上传AppStore
+    deliver(
+      submit_for_review: true, # 提交审核
+      automatic_release: true,
+      # 选择跳过图片和元数据上传，自己去配置
+      # skip_screenshots:true,
+      # skip_metadata:true,
+      # skip_binary_upload: true,
+      # 上传所有信息到App Store
+      force:true,
+      metadata_path: ENV['METADATA_PATH'],
+      screenshots_path: ENV['SCREENSHOTS_PATH'],
+      # release_notes: "update somethings",
+    )
+
+    # 上传到蒲公英
+    # pgyer(
+    #   api_key: "433fa791a2cae1563d20f29b0ff2f4e1", 
+    #   # password: "123456",  # 设置密码
+    #   # install_type: "2" # 设置密码
+    #   update_description: "生产"
+    # )
+
+    git_add
+    git_commit(path: ".", message: "fastlane update version")
+    push_to_git_remote
+  end
+
+  # ------------------------------ 开发、测试、仿真打包  ------------------------------ #
+
+  # build_to_firim
+  lane :build do
+    install_pods()
+
+    scheme_name = ENV['SCHEME_NAME']
+
+    project_name = ENV['PROJECT_NAME']
+
+    project = "./" + project_name + "/" + project_name + ".xcodeproj"
+    workspace = "./" + project_name + ".xcworkspace"
+
+    method_name = ENV['METHOD']
+
+    team_id = ENV['TEAM_ID']
+
+    # get_provisioning_profile(
+    #   adhoc: true,
+    #   force: false,
+    #   app_identifier: "com.zcsmart.property",
+    #   filename: "AdHoc_com.zcsmart.property.mobileprovision"
+    # )
+    # sigh(adhoc: true)#申请adhoc证书
+
+    # build加1
+    increment_build_number_in_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    # 获取应用版本号
+    versoin_number = get_version_number_from_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    # 获取build版本号
+    build_number = get_build_number_from_xcodeproj(
+      xcodeproj: project,
+      target: scheme_name
+    )
+
+    now_date = Time.now.strftime('%Y%m%d')
+    now_time = Time.now.strftime('%Y%m%d_%H%M%S')
+
+    #导出路径  我们可以桌面创建IPA_Info(没有的话会自动创建) 文件夹来集中管理生成的ipa等文件
+    output_directory = File.expand_path("./IPA/#{now_date}")
+
+    #导出名称 
+    output_name = "#{scheme_name}_#{versoin_number}.#{build_number}_#{now_time}.ipa"
+
+    #gym用于编译ipa 参数可参考https://docs.fastlane.tools/actions/gym/#gym
+    gym(
+      workspace: workspace,
+      scheme: scheme_name,
+      export_method: method_name, #app-store、ad-hoc、development、enterprise
+      # export_xcargs: "-allowProvisioningUpdates", #Xcode 9 默认不允许访问钥匙串的内容,必须要设置此项才可以
+      output_directory: output_directory,
+      output_name: output_name,
+      configuration: "Release", # Debug, Release
+      clean: true, # 在构建前先clean
+      suppress_xcode_output: true, # 打包过程中不显示xcode的输出信息
+      export_options: {
+        compileBitcode: false,
+        destination: 'export',
+        method: method_name, #默认,可以不指定
+        signingStyle: "automatic",
+        stripSwiftSymbols: true,
+        teamID: team_id,
+        thinning: "<none>"
+      }
+    )
+
+    # 上传到firim
+    firim(
+      firim_api_token: ENV['FIRIM_API_TOKEN'],
+      app_changelog: ENV['FIRIM_CHANGELOG'],
+      download_page_prefix: 'https://fir.xcxwo.com',
+      app_is_opened: true,
+    )
+
+    # 上传AppStore
+    # deliver(
+    #   # submit_for_review: true, # 提交审核
+    #   # automatic_release: true,
+    #   # 选择跳过图片和元数据上传，自己去配置
+    #   # skip_screenshots:true,
+    #   # skip_metadata:true,
+    #   # skip_binary_upload: true,
+    #   # 上传所有信息到App Store
+    #   force:true,
+    #   metadata_path: ENV['METADATA_PATH'],
+    #   screenshots_path: ENV['SCREENSHOTS_PATH'],
+    #   # release_notes: "update somethings",
+    # )
+
+    # 上传到蒲公英
+    # pgyer(
+    #   api_key: "433fa791a2cae1563d20f29b0ff2f4e1", 
+    #   # password: "123456",  # 设置密码
+    #   # install_type: "2" # 设置密码
+    #   update_description: "生产"
+    # )
+
+    git_add
+    git_commit(path: ".", message: "fastlane update version")
+    push_to_git_remote
+  end
+end
